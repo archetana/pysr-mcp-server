@@ -1,37 +1,46 @@
-from fastmcp import FastMCP
-from pysr import PySRRegressor
+# pysr_mcp_server.py
 import numpy as np
+from pysr import PySRRegressor
+#from mcp.server.fastmcp import FastMCPServer
+from mcp.server.fastmcp import FastMCP
+#from fastmcp.server import Server
 
-mcp = FastMCP("PySR MCP Server")
 
-# Train a symbolic regression model once when the server starts
-X = np.linspace(-5, 5, 100).reshape(-1, 1)
-y = X[:, 0]**2 + X[:, 0] + 1  # quadratic example
+server = FastMCP("pysr-mcp")
 
-model = PySRRegressor(
-    niterations=40,
-    binary_operators=["+", "-", "*", "/"],
-)
-model.fit(X, y)
+model = None
 
-@mcp.tool()
-def predict(values: list) -> float:
-    """
-    Predict using the trained PySR symbolic regression model.
-    Args:
-        values: list of float (input features, here single variable).
-    Returns:
-        float prediction.
-    """
-    x = np.array(values).reshape(1, -1)
-    return float(model.predict(x)[0])
+@server.tool()
+def train_model(X: list[list[float]], y: list[float], iterations: int = 1000) -> dict:
+    """Train PySR model on dataset"""
+    global model
+    model = PySRRegressor(
+        niterations=iterations,
+        unary_operators=["sin", "cos", "exp", "log"],
+        binary_operators=["+", "-", "*", "/"],
+        model_selection="best",
+    )
+    X = np.array(X)
+    y = np.array(y)
+    model.fit(X, y)
+    return {"status": "Model trained", "best_equation": str(model.get_best())}
 
-@mcp.tool()
-def best_equation() -> str:
-    """
-    Return the best symbolic regression equation found by PySR.
-    """
-    return str(model.get_best()["equation"])
+@server.tool()
+def predict(X: list[list[float]]) -> dict:
+    """Make predictions with trained model"""
+    global model
+    if model is None:
+        return {"error": "No trained model"}
+    preds = model.predict(np.array(X)).tolist()
+    return {"predictions": preds}
+
+@server.tool()
+def get_equation() -> dict:
+    """Return best symbolic equation"""
+    global model
+    if model is None:
+        return {"error": "No model trained"}
+    return {"equation": str(model.get_best())}
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    server.run(transport="streamable-http")

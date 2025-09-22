@@ -1,55 +1,37 @@
-import asyncio
-from contextlib import AsyncExitStack
-from typing import Optional
+# streamlit_client.py
+import streamlit as st
+import pandas as pd
+import requests
 
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+# MCP server URL (adjust if running on another port/machine)
+SERVER_URL = "http://localhost:8000/tools"
+st.title("⚡ PySR with MCP + Streamlit")
 
-class MCPClient:
-     def _init_(self):
-       self.session - None
-       self.exit_stack - None
+# File upload
+file = st.file_uploader("Upload CSV dataset", type=["csv"])
+if file:
+    df = pd.read_csv(file)
+    st.write("Preview of dataset:", df.head())
 
-     async def initialize(self, url):
-        self._stream_context= streamablehttp_client(url)
-        r_stream, w_stream, _= await self._stream_context.__aenter__()
-        self._session_context= ClientSession(r_stream, w_stream)
-        self.session= await self._session_context.__aenter__()
-        await self.session.initialize()
+    X_cols = st.multiselect("Select features (X)", df.columns.tolist())
+    y_col = st.selectbox("Select target (y)", df.columns.tolist())
 
-     async def list_tools(self):
-        response =await self.session.list_tools()
-        tools= response.tools
-        return tools
-     
-     async def cleanup(self):
-         if self._session_context:
-            await self._session_context.__aexit__(None,None,None)
+    if st.button("Train PySR Model"):
+        X = df[X_cols].values.tolist()
+        y = df[y_col].values.tolist()
+        response = requests.post(f"{SERVER_URL}/train_model", json={"X": X, "y": y})
+        st.json(response.json())
 
-         if self._stream_context:
-            await self._stream_context.__aexit__(None,None,None)
+    if st.button("Get Equation"):
+        response = requests.post(f"{SERVER_URL}/get_equation", json={})
+        st.json(response.json())
 
-async def main():
-     
-     client = MCPClient()
-     try:
-         await client.initialize("http://localhost:8000/mcp")
-     
-         tools = await client.list_tools()
-         print("Available tools:", tools)
-     
-         # if "predict" in tools:
-         response = await client.session.call_tool("predict", {"values": [3.0]})
-         print("Prediction for input [3.0]:", response)
-     
-         # if "best_equation" in tools:
-         response = await client.session.call_tool("best_equation", {})
-         print("Best equation found:", response)
-
-     finally: 
-           await client.cleanup()
-     
-asyncio.run(main())
+    st.subheader("Make Predictions")
+    input_data = st.text_area("Enter input data (comma-separated per row)", "1.0,2.0\n3.0,4.0")
+    if st.button("Predict"):
+        rows = [list(map(float, row.split(","))) for row in input_data.strip().split("\n")]
+        response = requests.post(f"{SERVER_URL}/predict", json={"X": rows})
+        st.json(response.json())
 
 # import asyncio
 # from mcp.client import MCPClient

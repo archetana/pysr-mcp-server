@@ -1,672 +1,793 @@
-# pysr-mcp-server
-MCP wrapper to expose PySR symbolic regression capabilities via a modular context-aware Python server.
-
-## Overview
-`pysr-mcp-server` is a Python-based server that wraps the [PySR](https://github.com/MilesCwith a **Model Context Protocol (MCP)** interface. It enables context-aware model invocation, dynamic configuration, and remote access to symbolic regression workflows.
-
-This project is designed for integration into emerging tech environments where symbolic modeling needs to be orchestrated across multiple contexts and systems.
-
-## Key Features
-- MCP-compliant interface for PySR
-- Context-aware model invocation
-- RESTful API for remote access
-- Modular and extensible architecture
-- Configurable via YAML or JSON
-
-# 🧬 PySR Symbolic Regression System
-
-A comprehensive web-based platform for symbolic regression using PySR with modern microservices architecture. Discover mathematical relationships in your data through an intuitive interface.
-
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-
-## 🌟 Features
-
-### 🔬 Symbolic Regression Capabilities
-- **Automated equation discovery** from data using evolutionary algorithms
-- **Multi-objective optimization** balancing accuracy and complexity
-- **Custom operator support** including trigonometric, logarithmic, and algebraic functions
-- **Pareto frontier analysis** for model selection
-- **Real-time training monitoring** with progress updates
-
-### 🏗️ Modern Architecture
-- **Microservices design** with separate MCP server, API backend, and frontend
-- **FastMCP integration** for high-performance symbolic regression processing
-- **RESTful API** with comprehensive documentation
-- **Real-time updates** and progress monitoring
-- **Scalable deployment** with Docker support
-
-### 💻 User Experience
-- **Beautiful web interface** built with Streamlit
-- **Intuitive job management** with dashboard and monitoring
-- **Interactive visualizations** using Plotly
-- **Sample datasets** for quick testing
-- **Comprehensive help system** with guides and tutorials
-
-### 🔒 Enterprise Ready
-- **User authentication** with JWT tokens
-- **Role-based access control** 
-- **File upload security** with validation
-- **Database persistence** with PostgreSQL
-- **Production deployment** ready
-
-## 📋 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-- [API Documentation](#-api-documentation)
-- [Architecture](#-architecture)
-- [Development](#-development)
-- [Deployment](#-deployment)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.8+
-- PostgreSQL 13+
-- Julia 1.6+ (automatically installed with PySR)
-
-### 1. Clone and Setup
-```bash
-git clone <repository-url>
-cd pysr-system
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Database Setup
-```bash
-# Start PostgreSQL (using Docker)
-docker run --name pysr-postgres \
-  -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=pysr_db \
-  -p 5432:5432 -d postgres:13
-
-# Create tables
-python database_setup.py --sample-data
-```
-
-### 3. Configuration
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env file with your settings
-nano .env
-```
-
-### 4. Start Services
-```bash
-# Terminal 1: MCP Server
-cd mcp_server
-python pysr_mcp_server.py
-
-# Terminal 2: Backend API
-cd app_server
-uvicorn main:app --reload
-
-# Terminal 3: Frontend
-cd streamlit_app
-streamlit run app.py
-```
-
-### 5. Access the Application
-- **Web Interface**: http://localhost:8501
-- **API Documentation**: http://localhost:8000/docs
-- **Login**: demo_user / password123
-
-## 📦 Installation
-
-### Method 1: Local Development
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd pysr-system
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install Julia dependencies (automatic with PySR)
-python -c "import pysr; pysr.install()"
-```
-
-### Method 2: Docker (Coming Soon)
-
-```bash
-# Clone and start with Docker Compose
-git clone <repository-url>
-cd pysr-system
-docker-compose up -d
-```
-
-### Method 3: Production Deployment
-
-See [Deployment Guide](#-deployment) for detailed production setup instructions.
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Create a `.env` file in the root directory:
-
-```bash
-# Database
-DATABASE_URL=postgresql://postgres:password@localhost:5432/pysr_db
-
-# Security
-SECRET_KEY=your-super-secret-jwt-key
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# File Storage
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=10485760
-
-# Services
-MCP_SERVER_URL=http://localhost:8001
-API_BASE_URL=http://localhost:8000
-```
-
-### PySR Configuration
-
-Default PySR parameters can be customized in the web interface or via environment variables:
-
-```bash
-PYSR_DEFAULT_ITERATIONS=40
-PYSR_DEFAULT_POPULATIONS=8
-PYSR_DEFAULT_POPULATION_SIZE=33
-```
-
-## 📖 Usage
-
-### Creating Your First Job
-
-1. **Login/Register**
-   - Navigate to http://localhost:8501
-   - Register a new account or use demo credentials
-
-2. **Upload Data**
-   - Go to "New Job" tab
-   - Upload CSV file (features in columns, target in last column)
-   - Or use sample dataset for testing
-
-3. **Configure Parameters**
-   - Set iterations, populations, and complexity limits
-   - Choose mathematical operators
-   - Adjust parsimony for complexity control
-
-4. **Monitor Training**
-   - View real-time progress in "Jobs" tab
-   - See discovered equations as they evolve
-   - Monitor loss and complexity metrics
-
-5. **Analyze Results**
-   - Explore Pareto frontier of equations
-   - Compare accuracy vs. complexity
-   - Export equations in various formats
-
-### Data Format Requirements
-
-Your CSV file should follow this structure:
-```csv
-feature1,feature2,feature3,target
-1.2,0.5,-0.3,3.7
-0.8,-1.2,0.9,2.1
--0.5,2.3,0.1,1.9
-...
-```
-
-**Requirements:**
-- CSV format with headers
-- Features in first columns, target in last column
-- No missing values (clean data beforehand)
-- Maximum file size: 10MB
-
-### Sample Datasets
-
-The system includes sample datasets for testing:
-
-**Physics Dataset**: `y = 2.5 * cos(x3) + x0² - 0.5`
-- 4 features, 100 samples
-- Tests trigonometric and polynomial relationships
-
-**Engineering Dataset**: `y = √x0 * log(x1+1) + x2/x3`
-- 4 features, 200 samples  
-- Tests complex mathematical relationships
-
-## 📚 API Documentation
-
-### Authentication Endpoints
-
-```http
-POST /auth/register    # Register new user
-POST /auth/login       # Login user
-GET  /auth/me         # Get current user info
-```
-
-### Job Management Endpoints
-
-```http
-GET    /jobs           # List user jobs
-POST   /jobs           # Create new job
-GET    /jobs/{id}      # Get job details
-PUT    /jobs/{id}      # Update job
-DELETE /jobs/{id}      # Delete job
-POST   /jobs/{id}/run  # Execute job
-```
-
-### File Management Endpoints
-
-```http
-POST /jobs/{id}/upload    # Upload data file
-GET  /jobs/{id}/download  # Download data file
-```
-
-### Monitoring Endpoints
-
-```http
-GET /jobs/{id}/status          # Get job status
-GET /jobs/{id}/runs           # Get job run history
-GET /jobs/{id}/runs/{run_id}  # Get specific run details
-```
-
-### Health Check Endpoints
-
-```http
-GET /health    # System health check
-GET /info      # System information
-```
-
-For detailed API documentation with examples, visit http://localhost:8000/docs when the server is running.
-
-## 🏗️ Architecture
-
-### System Components
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Streamlit     │    │   App Server    │    │   MCP Server    │
-│   Frontend      │◄──►│   (FastAPI)     │◄──►│   (FastMCP)     │
-│                 │    │                 │    │                 │
-│ • Authentication│    │ • User Mgmt     │    │ • PySR Training │
-│ • Job Dashboard │    │ • Job Mgmt      │    │ • Model Mgmt    │
-│ • File Upload   │    │ • File Storage  │    │ • Predictions   │
-│ • Results View  │    │ • Database      │    │ • Validation    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │   PostgreSQL    │
-                       │   Database      │
-                       │                 │
-                       │ • Users         │
-                       │ • Jobs          │
-                       │ • Job Runs      │
-                       │ • File Storage  │
-                       └─────────────────┘
-```
-
-### Technology Stack
-
-**Frontend:**
-- Streamlit for web interface
-- Plotly for interactive visualizations
-- Modern CSS for beautiful styling
-
-**Backend:**
-- FastAPI for REST API
-- FastMCP for symbolic regression processing
-- PySR for equation discovery
-- JWT for authentication
-
-**Database:**
-- PostgreSQL for data persistence
-- asyncpg for async database operations
-- Structured schema with proper indexing
-
-**Infrastructure:**
-- Docker for containerization
-- nginx for reverse proxy (production)
-- Redis for caching (optional)
-
-### Data Flow
-
-1. **User uploads data** via Streamlit interface
-2. **Frontend sends request** to FastAPI backend
-3. **Backend stores job** in PostgreSQL database
-4. **Background task calls** MCP server for processing
-5. **MCP server runs PySR** symbolic regression
-6. **Results stored** in database and displayed in frontend
-
-## 🛠️ Development
-
-### Project Structure
-
-```
-pysr-system/
-├── mcp_server/
-│   ├── pysr_mcp_server.py      # FastMCP server implementation
-│   ├── models/                 # Saved models directory
-│   └── data/                   # Processing data directory
-├── app_server/
-│   ├── main.py                 # FastAPI application
-│   ├── models.py               # Pydantic models
-│   └── utils.py                # Utility functions
-├── streamlit_app/
-│   ├── app.py                  # Main Streamlit application
-│   ├── components/             # UI components
-│   └── utils.py                # Frontend utilities
-├── database_setup.py           # Database initialization
-├── requirements.txt            # Python dependencies
-├── .env                        # Environment configuration
-├── docker-compose.yml          # Docker configuration
-└── README.md                   # This file
-```
-
-### Development Setup
-
-```bash
-# Install development dependencies
-pip install -r requirements.txt
-pip install pytest black flake8
-
-# Set up pre-commit hooks
-pre-commit install
-
-# Run tests
-pytest tests/ -v
-
-# Format code
-black .
-flake8 .
-```
-
-### Adding New Features
-
-1. **MCP Server Tools**: Add new functions in `pysr_mcp_server.py` with `@mcp.tool()` decorator
-2. **API Endpoints**: Add new routes in `app_server/main.py`
-3. **Frontend Components**: Add new pages/components in `streamlit_app/`
-4. **Database Changes**: Update schema in `database_setup.py`
-
-### Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_mcp_server.py -v
-
-# Run with coverage
-pytest --cov=./ --cov-report=html
-```
-
-## 🚀 Deployment
-
-### Production Deployment with Docker
-
-```bash
-# Build and deploy
-docker-compose -f docker-compose.prod.yml up -d
-
-# Scale services
-docker-compose up -d --scale app-server=3
-```
-
-### Manual Production Setup
-
-1. **Server Setup**
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install dependencies
-sudo apt install python3.8 python3-pip postgresql redis-server nginx
-
-# Clone and setup application
-git clone <repository-url> /opt/pysr-system
-cd /opt/pysr-system
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-2. **Database Setup**
-```bash
-# Create production database
-sudo -u postgres createdb pysr_production
-sudo -u postgres createuser pysr_user
-
-# Set password and permissions
-sudo -u postgres psql -c "ALTER USER pysr_user PASSWORD 'secure_password';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE pysr_production TO pysr_user;"
-```
-
-3. **Environment Configuration**
-```bash
-# Create production environment file
-cp .env.example .env.production
-
-# Edit with production settings
-nano .env.production
-```
-
-4. **Service Setup**
-```bash
-# Create systemd services
-sudo cp deploy/pysr-*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable pysr-mcp pysr-api pysr-frontend
-sudo systemctl start pysr-mcp pysr-api pysr-frontend
-```
-
-5. **Nginx Configuration**
-```bash
-# Copy nginx configuration
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/pysr-system
-sudo ln -s /etc/nginx/sites-available/pysr-system /etc/nginx/sites-enabled/
-sudo systemctl reload nginx
-```
-
-### Environment Variables for Production
-
-```bash
-# .env.production
-DATABASE_URL=postgresql://pysr_user:secure_password@localhost:5432/pysr_production
-SECRET_KEY=very-long-random-string-for-jwt-signing
-REDIS_URL=redis://localhost:6379/0
-API_BASE_URL=https://pysr.yourdomain.com
-USE_SSL=true
-PRODUCTION=true
-DEBUG=false
-```
-
-### SSL/HTTPS Setup
-
-```bash
-# Install certbot
-sudo apt install certbot python3-certbot-nginx
-
-# Obtain SSL certificate
-sudo certbot --nginx -d pysr.yourdomain.com
-
-# Auto-renewal
-sudo crontab -e
-# Add: 0 12 * * * /usr/bin/certbot renew --quiet
-```
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-**1. Julia Installation Problems**
-```bash
-# Reinstall Julia packages
-python -c "import pysr; pysr.install(julia_kwargs={'force': True})"
-
-# Check Julia version
-julia --version
-```
-
-**2. Database Connection Errors**
-```bash
-# Check PostgreSQL status
-sudo systemctl status postgresql
-
-# Reset database
-python database_setup.py --reset --sample-data
-
-# Check connection
-python -c "import asyncpg; print('OK')"
-```
-
-**3. MCP Server Connection Issues**
-```bash
-# Check MCP server health
-curl http://localhost:8001/health
-
-# Check logs
-tail -f logs/mcp_server.log
-
-# Restart with debug
-python mcp_server/pysr_mcp_server.py --debug
-```
-
-**4. Streamlit Issues**
-```bash
-# Clear Streamlit cache
-streamlit cache clear
-
-# Restart with verbose logging
-streamlit run app.py --logger.level debug
-```
-
-### Performance Optimization
-
-**For Large Datasets:**
-- Use multiprocessing for PySR training
-- Implement data chunking for file uploads
-- Configure Redis for session caching
-- Use CDN for static assets
-
-**Memory Management:**
-- Set Julia memory limits: `export JULIA_NUM_THREADS=4`
-- Implement model checkpointing
-- Use streaming for large file processing
-- Configure garbage collection
-
-### Monitoring and Logging
-
-**Log Files:**
-```bash
-# View application logs
-tail -f logs/app_server.log
-tail -f logs/mcp_server.log
-tail -f logs/streamlit.log
-
-# View system logs
-journalctl -u pysr-api -f
-journalctl -u pysr-mcp -f
-```
-
-**Health Monitoring:**
-- API health endpoint: `GET /health`
-- Database connection monitoring
-- MCP server status checks
-- Resource usage monitoring
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Development Process
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature-name`
-3. **Make changes** and add tests
-4. **Run tests**: `pytest`
-5. **Format code**: `black . && flake8 .`
-6. **Commit changes**: `git commit -m "Add feature"`
-7. **Push to branch**: `git push origin feature-name`
-8. **Create Pull Request**
-
-### Code Standards
-
-- Follow PEP 8 style guide
-- Add type hints for all functions
-- Write comprehensive docstrings
-- Include tests for new features
-- Update documentation as needed
-
-### Areas for Contribution
-
-- **Algorithm improvements**: New operators, optimization techniques
-- **UI/UX enhancements**: Better visualizations, user experience
-- **Performance optimizations**: Faster training, better scaling
-- **Documentation**: Tutorials, examples, guides
-- **Testing**: More comprehensive test coverage
-- **Deployment**: Docker improvements, cloud deployment
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **PySR**: Miles Cranmer for the excellent symbolic regression library
-- **FastMCP**: For the Model Context Protocol framework
-- **FastAPI**: For the modern web framework
-- **Streamlit**: For the beautiful frontend framework
-- **Julia**: For high-performance scientific computing
-
-## 📞 Support
-
-- **Documentation**: Check this README and inline documentation
-- **Issues**: Create GitHub issues for bugs and feature requests
-- **Discussions**: Use GitHub Discussions for questions
-- **Email**: contact@pysr-system.com (if available)
-
-## 🗺️ Roadmap
-
-### Version 2.0 (Coming Soon)
-- [ ] Advanced equation validation and testing
-- [ ] Model comparison and ensemble methods
-- [ ] Cloud deployment templates
-- [ ] Advanced visualization features
-- [ ] Integration with popular ML frameworks
-
-### Version 2.1
-- [ ] Real-time collaborative features
-- [ ] Advanced user management
-- [ ] API rate limiting and quotas
-- [ ] Enhanced security features
-- [ ] Mobile-responsive interface
-
-### Version 3.0
-- [ ] Multi-tenant architecture
-- [ ] Advanced analytics and reporting
-- [ ] Integration with cloud ML services
-- [ ] Advanced symbolic regression techniques
-- [ ] Enterprise features and SSO
+# PySR MCP Server - Complete Guide
+
+## Table of Contents
+- [About PySR](#about-pysr)
+- [About This Implementation](#about-this-implementation)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Setup & Configuration](#setup--configuration)
+- [Running the Server](#running-the-server)
+- [Available Tools](#available-tools)
+- [Testing in Claude Desktop](#testing-in-claude-desktop)
+- [Example Workflows](#example-workflows)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-**Happy symbolic regression! 🧬✨**
+## About PySR
 
-For more information, visit our [documentation site](https://pysr-system.readthedocs.io) or check out the [API documentation](http://localhost:8000/docs).
+**PySR (Python Symbolic Regression)** is a high-performance symbolic regression library that discovers mathematical equations from data using evolutionary algorithms. Unlike traditional machine learning models that act as "black boxes," PySR finds interpretable, explicit mathematical formulas.
+
+### Key Features of PySR:
+- **Interpretable Results**: Generates human-readable mathematical equations
+- **Automatic Discovery**: Finds complex relationships without manual feature engineering
+- **Pareto Frontier**: Balances equation complexity vs. accuracy
+- **Customizable Operators**: Supports custom mathematical operators and constraints
+- **High Performance**: Built on Julia for speed, with Python interface
+- **Multi-Population Evolution**: Uses evolutionary algorithms with multiple populations
+
+### Use Cases:
+- Scientific discovery (physics, chemistry, biology)
+- Engineering modeling
+- Time series forecasting
+- Feature engineering
+- Model compression
+- Uncovering hidden patterns in data
+
+---
+
+## About This Implementation
+
+The **PySR MCP Server** (`pysr_mcp_server.py`) is a Model Context Protocol (MCP) server that exposes PySR's symbolic regression capabilities through a standardized API. It allows AI assistants like Claude to discover mathematical equations from your data.
+
+### Architecture Overview
+
+```
+┌─────────────────┐
+│ Claude Desktop  │
+│   (Client)      │
+└────────┬────────┘
+         │
+         │ MCP Protocol (stdio)
+         │
+┌────────▼────────┐
+│  proxy_server   │
+│  (Port 5173)    │
+└────────┬────────┘
+         │
+         │ HTTP
+         │
+┌────────▼────────────┐
+│ pysr_mcp_server     │
+│   (Port 8000)       │
+│                     │
+│ - FastMCP Framework │
+│ - PySR Engine       │
+│ - 12 Tools          │
+│ - Data Validation   │
+└─────────────────────┘
+```
+
+### Key Components:
+
+1. **pysr_mcp_server.py** (Main Server)
+   - HTTP-based MCP server using FastMCP
+   - 12 comprehensive tools for symbolic regression
+   - Model lifecycle management
+   - Data validation and metrics
+   - Equation export in multiple formats
+
+2. **proxy_server.py** (MCP Proxy)
+   - Bridges stdio (Claude Desktop) to HTTP (MCP Server)
+   - Enables Claude Desktop integration
+   - Handles protocol translation
+
+### Server Features:
+
+- ✅ **Complete Training Pipeline**: End-to-end CSV to equations
+- ✅ **Model Management**: Create, train, save, load, delete
+- ✅ **Flexible Configuration**: Custom operators, constraints, hyperparameters
+- ✅ **Multi-Format Export**: SymPy, LaTeX, Julia, JAX, PyTorch
+- ✅ **Data Validation**: Comprehensive quality checks
+- ✅ **Prediction Generation**: Use trained models for inference
+- ✅ **Health Monitoring**: Server status and system metrics
+- ✅ **Persistent Storage**: Save/load models to disk
+
+---
+
+## Installation
+
+### Prerequisites
+- Python 3.8 or higher
+- pip (Python package manager)
+- Julia (required by PySR) - will be auto-installed
+
+### Step 1: Install Python Dependencies
+
+```bash
+# Install required packages
+pip install fastmcp pysr numpy pandas matplotlib seaborn sympy psutil
+
+# Optional: Install in a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install fastmcp pysr numpy pandas matplotlib seaborn sympy psutil
+```
+
+### Step 2: Install PySR and Julia Backend
+
+```bash
+# PySR will automatically install Julia on first run
+# This may take a few minutes
+python -c "import pysr; pysr.install()"
+```
+
+### Step 3: Verify Installation
+
+```bash
+python -c "import pysr; print('PySR version:', pysr.__version__)"
+```
+
+---
+
+## Setup & Configuration
+
+### File Structure
+
+Create the following directory structure:
+
+```
+your-project/
+├── pysr_mcp_server.py    # Main MCP server
+├── proxy_server.py        # Proxy for Claude Desktop
+├── models/                # Auto-created: saved models
+├── data/                  # Auto-created: data storage
+└── results/               # Auto-created: results
+```
+
+### Configure Claude Desktop
+
+Edit your Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add this configuration:
+
+```json
+{
+  "mcpServers": {
+    "pysr": {
+      "command": "python",
+      "args": ["/absolute/path/to/proxy_server.py"],
+      "env": {}
+    }
+  }
+}
+```
+
+**Important**: Replace `/absolute/path/to/` with your actual file path!
+
+---
+
+## Running the Server
+
+### Method 1: Direct Server (for testing)
+
+```bash
+# Start the HTTP MCP server
+python pysr_mcp_server.py
+
+# Optional: Custom host/port
+python pysr_mcp_server.py --host 0.0.0.0 --port 8000
+
+# Optional: Enable debug logging
+python pysr_mcp_server.py --debug
+```
+
+The server will start on `http://localhost:8000`
+
+### Method 2: With Proxy (for Claude Desktop)
+
+**Terminal 1** - Start the main server:
+```bash
+python pysr_mcp_server.py
+```
+
+**Terminal 2** - Start the proxy:
+```bash
+python proxy_server.py
+```
+
+**Terminal 3** - Start Claude Desktop:
+```bash
+# macOS
+open -a Claude
+
+# Windows
+start Claude
+
+# Or just launch Claude Desktop normally
+```
+
+### Verify Server is Running
+
+```bash
+# Check health endpoint
+curl http://localhost:8000/health
+
+# Check server info
+curl http://localhost:8000/server/info
+```
+
+---
+
+## Available Tools
+
+The PySR MCP Server provides 12 powerful tools:
+
+### 1. `train_model_complete` ⭐ (Recommended)
+**All-in-one training pipeline** - Takes CSV data and returns discovered equations.
+
+**Parameters**:
+- `job_id`: Unique identifier
+- `data`: CSV data (string or file path)
+- `target_column`: Target variable name
+- `feature_columns`: List of feature names (optional)
+- `niterations`: Training iterations (default: 40)
+- `populations`: Number of populations (default: 15)
+- `population_size`: Population size (default: 33)
+- `binary_operators`: e.g., ["+", "-", "*", "/"]
+- `unary_operators`: e.g., ["sin", "cos", "exp", "log"]
+- `maxsize`: Max equation complexity (default: 20)
+- `parsimony`: Parsimony coefficient (default: 0.0032)
+
+### 2. `create_model`
+Create a new PySR model with custom configuration.
+
+### 3. `fit_model`
+Train a previously created model on data.
+
+### 4. `predict`
+Generate predictions using a trained model.
+
+### 5. `get_equations`
+Retrieve all discovered equations with metrics.
+
+### 6. `save_model`
+Save trained model to disk.
+
+### 7. `load_model`
+Load previously saved model from disk.
+
+### 8. `export_equation`
+Export equation in various formats (SymPy, LaTeX, Julia, JAX, PyTorch).
+
+### 9. `validate_data`
+Validate data quality and format.
+
+### 10. `list_models`
+List all active models and their status.
+
+### 11. `delete_model`
+Remove model from memory.
+
+### 12. `health_check`
+Check server health and system status.
+
+---
+
+## Testing in Claude Desktop
+
+Once your server is running and Claude Desktop is configured, use these prompts to test all tools:
+
+### Test 1: Complete Training Pipeline (Simple Example)
+
+```
+I want to test the PySR symbolic regression server. Can you help me discover the equation for some simple data?
+
+Use the train_model_complete tool with this CSV data:
+
+x,y
+1,2
+2,4
+3,6
+4,8
+5,10
+
+Target column is "y", use default parameters, and job_id = "test_linear_001"
+```
+
+### Test 2: Polynomial Relationship
+
+```
+Discover the equation for this polynomial data using PySR:
+
+x,y
+1,1
+2,8
+3,27
+4,64
+5,125
+
+The target is "y". Set niterations=50, populations=20, and include operators: ["+", "-", "*", "/", "^"]. Job ID: "test_cubic_001"
+```
+
+### Test 3: Trigonometric Pattern
+
+```
+Find the underlying equation for this sine wave data:
+
+x,y
+0,0
+0.5,0.479
+1,0.841
+1.5,0.997
+2,0.909
+2.5,0.598
+3,0.141
+
+Target: "y". Enable sin, cos operators. Job ID: "test_trig_001"
+```
+
+### Test 4: Exponential Growth
+
+```
+Discover the equation for exponential growth:
+
+time,population
+0,100
+1,271
+2,738
+3,2008
+4,5459
+5,14841
+
+Target: "population". Include exp, log operators. Job ID: "test_exp_001"
+```
+
+### Test 5: Multiple Features
+
+```
+Find the equation for this multi-variable dataset:
+
+x1,x2,y
+1,2,5
+2,3,13
+3,4,25
+4,5,41
+5,6,61
+
+Target: "y", features: ["x1", "x2"]. Job ID: "test_multi_001"
+```
+
+### Test 6: Model Lifecycle Management
+
+```
+Can you:
+1. List all active models using list_models
+2. Get equations for model "model_test_linear_001"
+3. Export the best equation in LaTeX format
+4. Check the server health
+5. Show me how to save this model to disk
+```
+
+### Test 7: Data Validation
+
+```
+Before training, validate this data for quality issues:
+
+Create TrainingData with:
+X = [[1, 2], [3, 4], [5, 6], [7, 8]]
+y = [10, 20, 30, 40]
+
+Use validate_data tool and tell me if there are any issues.
+```
+
+### Test 8: Model Persistence
+
+```
+I want to:
+1. Save the model "model_test_cubic_001" to disk as "my_cubic_model.pkl"
+2. Delete it from memory
+3. Load it back with model_id "reloaded_model"
+4. Generate predictions for X = [[6], [7], [8]]
+```
+
+### Test 9: Advanced Configuration
+
+```
+Create a custom model with:
+- model_id: "custom_model_001"
+- binary_operators: ["+", "-", "*", "/", "^"]
+- unary_operators: ["sin", "cos", "exp", "log", "sqrt", "abs"]
+- niterations: 100
+- populations: 20
+- maxsize: 30
+- parsimony: 0.001
+
+Then fit it on the polynomial data from Test 2.
+```
+
+### Test 10: Real-World Physics Example
+
+```
+Help me discover the physics equation for projectile motion. Here's height vs time data:
+
+time,height
+0,0
+0.5,22.375
+1,39.5
+1.5,51.375
+2,58
+2.5,59.375
+3,55.5
+3.5,46.375
+4,32
+
+Target: "height". Include operators that make sense for physics (powers, basic arithmetic). Job ID: "physics_001"
+```
+
+### Test 11: Equation Export Formats
+
+```
+For the best model we've trained, export the equation in all available formats:
+1. SymPy
+2. LaTeX
+3. Julia
+
+Show me the differences between these representations.
+```
+
+### Test 12: Server Monitoring
+
+```
+Give me a complete status report:
+1. Run health_check
+2. List all models
+3. Show server info
+4. Report system resources (CPU, memory)
+```
+
+---
+
+## Example Workflows
+
+### Workflow 1: Quick Discovery
+
+```python
+# In Claude Desktop, paste this prompt:
+"""
+I have CSV data with columns: [temperature, pressure, volume].
+I want to discover the relationship where volume is the target.
+Use train_model_complete with job_id "ideal_gas_001".
+
+Here's my data:
+temperature,pressure,volume
+300,1,24.62
+350,1,28.72
+400,1,32.83
+300,2,12.31
+350,2,14.36
+400,2,16.41
+"""
+```
+
+### Workflow 2: Iterative Refinement
+
+```python
+# Prompt sequence:
+# 1. Initial training
+"Train a model on my data with default settings"
+
+# 2. Examine results
+"Show me all equations discovered, not just the best one"
+
+# 3. Refine
+"The equations are too complex. Retrain with maxsize=10 and higher parsimony=0.01"
+
+# 4. Export
+"Export the simplest equation that has R² > 0.95 in LaTeX format"
+```
+
+### Workflow 3: Model Comparison
+
+```python
+# Prompt:
+"""
+I want to compare different operator sets. Train 3 models:
+1. job_id "linear_only" - only ["+", "-", "*", "/"]
+2. job_id "with_powers" - add "^" operator
+3. job_id "full_operators" - add ["sin", "cos", "exp", "log"]
+
+Use the same data for all three and compare their best equations.
+"""
+```
+
+---
+
+## Troubleshooting
+
+### Issue 1: Server won't start
+
+**Error**: `Address already in use`
+
+**Solution**:
+```bash
+# Find and kill process on port 8000
+lsof -ti:8000 | xargs kill -9
+
+# Or use a different port
+python pysr_mcp_server.py --port 8001
+```
+
+### Issue 2: Claude Desktop can't connect
+
+**Symptoms**: Tools not appearing in Claude
+
+**Solutions**:
+1. Verify proxy is running: `ps aux | grep proxy_server`
+2. Check config file path is absolute
+3. Restart Claude Desktop completely
+4. Check logs: Claude menu → Settings → Developer → View Logs
+
+### Issue 3: PySR installation fails
+
+**Error**: Julia installation problems
+
+**Solution**:
+```bash
+# Manual Julia installation
+python -c "import pysr; pysr.install()"
+
+# If that fails, install Julia separately:
+# Download from: https://julialang.org/downloads/
+```
+
+### Issue 4: Training is slow
+
+**Solutions**:
+- Reduce `niterations` (try 20-30 for testing)
+- Reduce `populations` (try 8-10)
+- Reduce `maxsize` (try 15)
+- Use fewer operators
+- Ensure you have good CPU resources
+
+### Issue 5: No equations found
+
+**Possible causes**:
+- Data quality issues (NaN, infinite values)
+- Target variable is constant
+- Too few iterations
+- Operators don't match the relationship
+
+**Solutions**:
+1. Run `validate_data` first
+2. Increase `niterations`
+3. Try different operator combinations
+4. Check your data for patterns
+
+### Issue 6: Memory errors
+
+**Solution**:
+```bash
+# Clear models from memory
+# In Claude: "Delete all models except the one I'm using"
+
+# Or restart the server
+pkill -f pysr_mcp_server
+python pysr_mcp_server.py
+```
+
+### Issue 7: Import errors
+
+**Error**: `ModuleNotFoundError: No module named 'fastmcp'`
+
+**Solution**:
+```bash
+# Ensure you're in the correct environment
+pip install --upgrade fastmcp pysr numpy pandas matplotlib seaborn sympy psutil
+
+# Verify installation
+python -c "import fastmcp; import pysr; print('All good!')"
+```
+
+---
+
+## Advanced Configuration
+
+### Custom Operators
+
+You can define custom operators for domain-specific modeling:
+
+```python
+# In your training prompt:
+"""
+Train with custom operators:
+- binary_operators: ["+", "-", "*", "/", "^", "max", "min"]
+- unary_operators: ["sin", "cos", "exp", "log", "sqrt", "abs", "sign"]
+- complexity_of_operators: {"^": 2, "exp": 3, "log": 3}
+"""
+```
+
+### Constraints
+
+Add constraints to guide the search:
+
+```python
+# Example prompt:
+"""
+Create a model with constraints:
+- Don't allow division by small numbers
+- Prioritize simpler operations
+- constraints: {"/": {"complexity": 2}}
+"""
+```
+
+### Performance Tuning
+
+For large datasets:
+
+```python
+# Recommended settings for datasets > 1000 rows:
+"""
+Use these parameters:
+- populations: 20
+- population_size: 50
+- niterations: 100
+- Enable progress tracking
+"""
+```
+
+---
+
+## API Reference
+
+### Complete Tool Signatures
+
+#### train_model_complete
+```python
+{
+    "job_id": str,              # Required
+    "data": str,                # Required: CSV string or file path
+    "target_column": str,       # Required
+    "feature_columns": List[str],  # Optional
+    "niterations": int,         # Default: 40
+    "populations": int,         # Default: 15
+    "population_size": int,     # Default: 33
+    "binary_operators": List[str],  # Default: ["+", "-", "*", "/"]
+    "unary_operators": List[str],   # Default: ["sin", "cos", "exp", "log"]
+    "maxsize": int,             # Default: 20
+    "parsimony": float          # Default: 0.0032
+}
+```
+
+**Returns**:
+```python
+{
+    "success": bool,
+    "job_id": str,
+    "model_id": str,
+    "training_info": {...},
+    "best_equation": {...},
+    "all_equations": [...],
+    "metrics": {
+        "r2_score": float,
+        "rmse": float,
+        "mae": float,
+        "mape": float
+    },
+    "equation_exports": {...}
+}
+```
+
+---
+
+## Performance Benchmarks
+
+Typical training times (on modern CPU):
+
+| Data Size | Features | Iterations | Time |
+|-----------|----------|------------|------|
+| 100 rows  | 1-2      | 40         | 10-30s |
+| 500 rows  | 2-3      | 40         | 30-60s |
+| 1000 rows | 3-5      | 40         | 1-2min |
+| 5000 rows | 5+       | 100        | 5-10min |
+
+*Times vary based on operator complexity and CPU speed*
+
+---
+
+## Best Practices
+
+### 1. Data Preparation
+- Clean your data (remove NaN, infinities)
+- Normalize features if they have very different scales
+- Use meaningful column names
+- Include enough samples (minimum 20-50)
+
+### 2. Operator Selection
+- Start with basic operators `["+", "-", "*", "/"]`
+- Add complexity gradually (`"^"`, `"sin"`, `"cos"`)
+- Match operators to your domain (e.g., `"exp"` for growth)
+
+### 3. Hyperparameter Tuning
+- Start with defaults
+- Increase iterations if equations aren't good enough
+- Increase parsimony if equations are too complex
+- Use more populations for difficult problems
+
+### 4. Model Management
+- Use descriptive job_ids and model_ids
+- Save important models to disk
+- Clean up unused models regularly
+- Document your best configurations
+
+### 5. Interpretation
+- Look at the Pareto frontier (all equations)
+- Balance complexity vs. accuracy
+- Validate on held-out data
+- Export equations for further analysis
+
+---
+
+## Contributing & Support
+
+### Reporting Issues
+- Server bugs: Check logs and include error traces
+- PySR issues: Visit [PySR GitHub](https://github.com/MilesCranmer/PySR)
+- MCP protocol: See [MCP Documentation](https://modelcontextprotocol.io)
+
+### Resources
+- **PySR Documentation**: https://astroautomata.com/PySR/
+- **PySR Paper**: https://arxiv.org/abs/2305.01582
+- **FastMCP**: https://github.com/jlowin/fastmcp
+- **MCP Specification**: https://modelcontextprotocol.io/
+
+---
+
+## License
+
+This server implementation is provided as-is for use with PySR. PySR is licensed under Apache License 2.0.
+
+---
+
+## Quick Reference Card
+
+### Server Commands
+```bash
+# Start server
+python pysr_mcp_server.py
+
+# Start proxy
+python proxy_server.py
+
+# Check health
+curl http://localhost:8000/health
+```
+
+### Essential Prompts
+```
+# Quick test
+"Train a model on x=[1,2,3,4,5], y=[2,4,6,8,10], target=y, job_id=test1"
+
+# List models
+"Show me all active models"
+
+# Export equation
+"Export the best equation from model_test1 in LaTeX format"
+
+# Save model
+"Save model_test1 to disk"
+```
+
+### Common Operators
+- Basic: `+, -, *, /`
+- Powers: `^, sqrt`
+- Trigonometric: `sin, cos, tan`
+- Exponential: `exp, log`
+- Other: `abs, sign, max, min`
+
+---
+
+**Happy Equation Hunting! 🔬✨**

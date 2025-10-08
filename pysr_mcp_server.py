@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 PySR MCP Server - FastMCP implementation for symbolic regression
-Provides 11 core tools for PySR model training and management
+Provides 12 core tools for PySR model training and management
+Uses HTTP transport for communication
 """
 
 import os
@@ -25,7 +26,7 @@ from pysr import PySRRegressor
 import sympy
 import matplotlib.pyplot as plt
 import seaborn as sns
-from io import BytesIO
+from io import BytesIO, StringIO
 import base64
 
 # Configure logging
@@ -83,6 +84,288 @@ class EquationExport(BaseModel):
     format: str = Field(default="sympy", description="Export format: sympy, latex, julia, jax, torch")
     equation_index: Optional[int] = Field(default=None, description="Specific equation index (None for best)")
 
+
+def parse_csv_data(data: str) -> pd.DataFrame:
+    """
+    Parse CSV data from string or file path.
+    
+    Args:
+        data: CSV data as string or file path
+        
+    Returns:
+        Pandas DataFrame
+    """
+    try:
+        # Check if it's a file path
+        if os.path.exists(data):
+            return pd.read_csv(data)
+        else:
+            # Try parsing as CSV string
+            return pd.read_csv(StringIO(data))
+    except Exception as e:
+        raise ValueError(f"Failed to parse CSV data: {str(e)}")
+
+
+@mcp.tool()
+async def train_model_complete(
+    job_id: str = Field(description="Unique job identifier"),
+    data: str = Field(description="CSV data as string or file path"),
+    target_column: str = Field(description="Name of target variable column"),
+    feature_columns: Optional[List[str]] = Field(default=None, description="List of feature column names (None = auto-select all except target)"),
+    niterations: int = Field(default=40, description="Number of iterations"),
+    populations: int = Field(default=15, description="Number of populations"),
+    population_size: int = Field(default=33, description="Population size"),
+    binary_operators: Optional[List[str]] = Field(default=None, description="Binary operators (default: ['+', '-', '*', '/'])"),
+    unary_operators: Optional[List[str]] = Field(default=None, description="Unary operators (default: ['sin', 'cos', 'exp', 'log'])"),
+    maxsize: int = Field(default=20, description="Maximum complexity"),
+    parsimony: float = Field(default=0.0032, description="Parsimony coefficient")
+) -> Dict[str, Any]:
+    """
+    Complete training pipeline: validates data, trains model, and returns all results.
+    This is an all-in-one tool that takes CSV data and returns discovered equations.
+    
+    Args:
+        job_id: Unique job identifier
+        data: CSV data as string or file path
+        target_column: Name of target variable column
+        feature_columns: List of feature column names (None = auto-select all except target)
+        niterations: Number of iterations (default: 40)
+        populations: Number of populations (default: 15)
+        population_size: Population size (default: 33)
+        binary_operators: List of binary operators (default: ["+", "-", "*", "/"])
+        unary_operators: List of unary operators (default: ["sin", "cos", "exp", "log"])
+        maxsize: Maximum complexity (default: 20)
+        parsimony: Parsimony coefficient (default: 0.0032)
+        
+    Returns:
+        JSON with complete training results including best equations, predictions, and metrics
+    """
+    try:
+        logger.info(f"Starting complete training pipeline for job {job_id}")
+        
+        # Step 1: Parse and validate data
+        logger.info("Step 1: Parsing CSV data")
+        try:
+            df = parse_csv_data(data)
+        except Exception as e:
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": f"Failed to parse CSV data: {str(e)}"
+            }
+        
+        # Validate target column exists
+        if target_column not in df.columns:
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": f"Target column '{target_column}' not found in data. Available columns: {list(df.columns)}"
+            }
+        
+        # Select features
+        if feature_columns is None:
+            feature_columns = [col for col in df.columns if col != target_column]
+        else:
+            # Validate feature columns exist
+            missing_cols = [col for col in feature_columns if col not in df.columns]
+            if missing_cols:
+                return {
+                    "success": False,
+                    "job_id": job_id,
+                    "error": f"Feature columns not found: {missing_cols}"
+                }
+        
+        # Extract X and y
+        X = df[feature_columns].values
+        y = df[target_column].values
+        
+        logger.info(f"Data loaded: {X.shape[0]} samples, {X.shape[1]} features")
+        
+        # Step 2: Validate data quality
+        logger.info("Step 2: Validating data quality")
+        if np.any(np.isnan(X)) or np.any(np.isinf(X)):
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "Feature matrix contains NaN or infinite values"
+            }
+        
+        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "Target vector contains NaN or infinite values"
+            }
+        
+        # Step 3: Create and configure model
+        logger.info("Step 3: Creating PySR model")
+        
+        if binary_operators is None:
+            binary_operators = ["+", "-", "*", "/"]
+        if unary_operators is None:
+            unary_operators = ["sin", "cos", "exp", "log"]
+        
+        model = PySRRegressor(
+            binary_operators=binary_operators,
+            unary_operators=unary_operators,
+            niterations=niterations,
+            populations=populations,
+            population_size=population_size,
+            maxsize=maxsize,
+            parsimony=parsimony,
+            loss="L2DistLoss()",
+            model_selection="best",
+            progress=True,
+            verbosity=1
+        )
+        
+        # Set feature names
+        model.feature_names_in_ = feature_columns
+        
+        # Step 4: Train model
+        logger.info("Step 4: Training model...")
+        training_start = datetime.now()
+        
+        model.fit(X, y)
+        
+        training_end = datetime.now()
+        training_duration = (training_end - training_start).total_seconds()
+        
+        logger.info(f"Training completed in {training_duration:.2f} seconds")
+        
+        # Step 5: Extract results
+        logger.info("Step 5: Extracting results")
+        
+        if not hasattr(model, 'equations_') or len(model.equations_) == 0:
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "No equations were discovered during training"
+            }
+        
+        equations_df = model.equations_
+        
+        # Get all equations
+        all_equations = []
+        for idx, row in equations_df.iterrows():
+            eq_info = {
+                "index": int(idx),
+                "equation": str(row.equation),
+                "complexity": int(row.complexity),
+                "loss": float(row.loss),
+                "score": float(row.score)
+            }
+            all_equations.append(eq_info)
+        
+        # Get best equation
+        best_eq = equations_df.iloc[-1]
+        best_equation_info = {
+            "equation": str(best_eq.equation),
+            "complexity": int(best_eq.complexity),
+            "loss": float(best_eq.loss),
+            "score": float(best_eq.score)
+        }
+        
+        # Step 6: Generate predictions and metrics
+        logger.info("Step 6: Calculating metrics")
+        
+        predictions = model.predict(X)
+        
+        # Calculate metrics
+        r2_score = 1 - np.sum((y - predictions) ** 2) / np.sum((y - np.mean(y)) ** 2)
+        rmse = np.sqrt(np.mean((y - predictions) ** 2))
+        mae = np.mean(np.abs(y - predictions))
+        mape = np.mean(np.abs((y - predictions) / y)) * 100 if np.all(y != 0) else None
+        
+        metrics = {
+            "r2_score": float(r2_score),
+            "rmse": float(rmse),
+            "mae": float(mae),
+            "mape": float(mape) if mape is not None else None
+        }
+        
+        # Step 7: Export equation in multiple formats
+        logger.info("Step 7: Exporting equations")
+        
+        equation_exports = {}
+        try:
+            # SymPy format
+            equation_exports["sympy"] = str(best_eq.equation)
+            
+            # LaTeX format
+            try:
+                sympy_eq = sympy.sympify(str(best_eq.equation))
+                equation_exports["latex"] = sympy.latex(sympy_eq)
+            except:
+                equation_exports["latex"] = "LaTeX conversion not available"
+                
+        except Exception as e:
+            logger.warning(f"Some equation exports failed: {e}")
+        
+        # Step 8: Store model and results
+        model_id = f"model_{job_id}"
+        models_storage[model_id] = model
+        training_state[model_id] = {
+            "status": "completed",
+            "job_id": job_id,
+            "created_at": training_start.isoformat(),
+            "completed_at": training_end.isoformat(),
+            "training_duration": training_duration
+        }
+        data_storage[model_id] = {
+            "X": X,
+            "y": y,
+            "feature_names": feature_columns,
+            "target_column": target_column
+        }
+        
+        logger.info(f"Job {job_id} completed successfully!")
+        
+        # Return comprehensive results
+        return {
+            "success": True,
+            "job_id": job_id,
+            "model_id": model_id,
+            "status": "completed",
+            "training_info": {
+                "duration_seconds": training_duration,
+                "started_at": training_start.isoformat(),
+                "completed_at": training_end.isoformat(),
+                "data_shape": {
+                    "samples": int(X.shape[0]),
+                    "features": int(X.shape[1])
+                },
+                "feature_names": feature_columns,
+                "target_column": target_column
+            },
+            "best_equation": best_equation_info,
+            "all_equations": all_equations,
+            "total_equations_found": len(all_equations),
+            "metrics": metrics,
+            "equation_exports": equation_exports,
+            "predictions_sample": predictions[:10].tolist() if len(predictions) > 10 else predictions.tolist(),
+            "configuration": {
+                "niterations": niterations,
+                "populations": populations,
+                "population_size": population_size,
+                "binary_operators": binary_operators,
+                "unary_operators": unary_operators,
+                "maxsize": maxsize,
+                "parsimony": parsimony
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in complete training pipeline for job {job_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "job_id": job_id,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @mcp.tool()
 async def create_model(
     model_id: str = Field(description="Unique identifier for the model"),
@@ -114,7 +397,7 @@ async def create_model(
             "loss": config.loss,
             "model_selection": config.model_selection,
             "random_state": config.random_state,
-            "progress": True,  # Enable progress tracking
+            "progress": True,
             "verbosity": 1,
         }
         
@@ -224,7 +507,7 @@ async def fit_model(
         
         # Get best equation info
         if hasattr(model, 'equations_') and len(model.equations_) > 0:
-            best_eq = model.equations_.iloc[-1]  # Last equation is typically best
+            best_eq = model.equations_.iloc[-1]
             training_state[model_id]["best_loss"] = float(best_eq.loss)
             training_state[model_id]["best_equation"] = str(best_eq.equation)
             training_state[model_id]["best_complexity"] = int(best_eq.complexity)
@@ -574,7 +857,7 @@ async def export_equation(
             
         # Get equation
         if equation_index is None:
-            equation_row = model.equations_.iloc[-1]  # Best equation
+            equation_row = model.equations_.iloc[-1]
             equation_index = len(model.equations_) - 1
         else:
             if equation_index >= len(model.equations_):
@@ -615,7 +898,7 @@ async def export_equation(
                 
         except Exception as format_error:
             logger.warning(f"Format conversion error: {format_error}")
-            exported_equation = str(equation)  # Fallback to string representation
+            exported_equation = str(equation)
             
         return {
             "success": True,
@@ -631,79 +914,6 @@ async def export_equation(
         
     except Exception as e:
         logger.error(f"Error exporting equation for model {model_id}: {str(e)}")
-        return {
-            "success": False,
-            "model_id": model_id,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-@mcp.tool()
-async def set_operators(
-    model_id: str = Field(description="Model identifier"),
-    binary_operators: Optional[List[str]] = Field(default=None, description="Binary operators"),
-    unary_operators: Optional[List[str]] = Field(default=None, description="Unary operators"),
-    complexity_of_operators: Optional[Dict[str, int]] = Field(default=None, description="Operator complexities")
-) -> Dict[str, Any]:
-    """
-    Update operators for existing model (before training).
-    
-    Args:
-        model_id: Model identifier
-        binary_operators: List of binary operators
-        unary_operators: List of unary operators
-        complexity_of_operators: Custom complexity values
-        
-    Returns:
-        Updated operator configuration
-    """
-    try:
-        if model_id not in models_storage:
-            return {
-                "success": False,
-                "error": f"Model {model_id} not found"
-            }
-            
-        model = models_storage[model_id]
-        
-        # Check if model is already trained
-        if hasattr(model, 'equations_') and len(model.equations_) > 0:
-            return {
-                "success": False,
-                "error": "Cannot modify operators after training. Create a new model."
-            }
-            
-        logger.info(f"Updating operators for model {model_id}")
-        
-        # Update operators
-        if binary_operators is not None:
-            model.binary_operators = binary_operators
-            
-        if unary_operators is not None:
-            model.unary_operators = unary_operators
-            
-        if complexity_of_operators is not None:
-            model.complexity_of_operators = complexity_of_operators
-            
-        # Update training state
-        if model_id in training_state:
-            training_state[model_id]["config"]["binary_operators"] = model.binary_operators
-            training_state[model_id]["config"]["unary_operators"] = model.unary_operators
-            if complexity_of_operators:
-                training_state[model_id]["config"]["complexity_of_operators"] = complexity_of_operators
-            training_state[model_id]["operators_updated_at"] = datetime.now().isoformat()
-        
-        return {
-            "success": True,
-            "model_id": model_id,
-            "binary_operators": model.binary_operators,
-            "unary_operators": model.unary_operators,
-            "complexity_of_operators": getattr(model, 'complexity_of_operators', {}),
-            "updated_at": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error updating operators for model {model_id}: {str(e)}")
         return {
             "success": False,
             "model_id": model_id,
@@ -784,10 +994,6 @@ async def validate_data(
             if stats["std"] < 1e-10:
                 validation_results["warnings"].append(f"Feature {i} appears to be constant")
                 
-            # Check for high cardinality
-            if stats["unique_values"] == len(feature_col):
-                validation_results["recommendations"].append(f"Feature {i} has all unique values")
-                
             feature_stats.append(stats)
             
         validation_results["feature_statistics"] = feature_stats
@@ -815,201 +1021,6 @@ async def validate_data(
             "error": str(e),
             "traceback": traceback.format_exc()
         }
-
-@mcp.tool()
-async def monitor_training(
-    model_id: str = Field(description="Model identifier")
-) -> Dict[str, Any]:
-    """
-    Monitor training progress and status.
-    
-    Args:
-        model_id: Model identifier
-        
-    Returns:
-        Current training status and progress metrics
-    """
-    try:
-        if model_id not in training_state:
-            return {
-                "success": False,
-                "error": f"No training state found for model {model_id}"
-            }
-            
-        state = training_state[model_id]
-        model = models_storage.get(model_id)
-        
-        logger.info(f"Monitoring training for model {model_id}")
-        
-        monitoring_info = {
-            "success": True,
-            "model_id": model_id,
-            "status": state["status"],
-            "created_at": state.get("created_at"),
-            "training_started": state.get("training_started"),
-            "training_completed": state.get("training_completed"),
-            "iterations_completed": state.get("iterations_completed", 0),
-            "equations_found": state.get("equations_found", 0),
-            "best_loss": state.get("best_loss"),
-            "best_equation": state.get("best_equation"),
-            "error": state.get("error")
-        }
-        
-        # Add current equations if model is available and has them
-        if model and hasattr(model, 'equations_') and len(model.equations_) > 0:
-            current_equations = []
-            for idx, row in model.equations_.tail(5).iterrows():  # Last 5 equations
-                current_equations.append({
-                    "index": int(idx),
-                    "equation": str(row.equation),
-                    "complexity": int(row.complexity),
-                    "loss": float(row.loss),
-                    "score": float(row.score)
-                })
-            monitoring_info["recent_equations"] = current_equations
-            
-        # Calculate training duration if applicable
-        if state.get("training_started") and state.get("training_completed"):
-            start_time = datetime.fromisoformat(state["training_started"])
-            end_time = datetime.fromisoformat(state["training_completed"])
-            duration = (end_time - start_time).total_seconds()
-            monitoring_info["training_duration_seconds"] = duration
-            
-        return monitoring_info
-        
-    except Exception as e:
-        logger.error(f"Error monitoring training for model {model_id}: {str(e)}")
-        return {
-            "success": False,
-            "model_id": model_id,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-@mcp.tool()
-async def evaluate_model(
-    model_id: str = Field(description="Model identifier"),
-    test_data: Optional[TrainingData] = Field(default=None, description="Optional test data for evaluation")
-) -> Dict[str, Any]:
-    """
-    Comprehensive model performance evaluation.
-    
-    Args:
-        model_id: Model identifier
-        test_data: Optional test data for evaluation
-        
-    Returns:
-        Comprehensive evaluation metrics and analysis
-    """
-    try:
-        if model_id not in models_storage:
-            return {
-                "success": False,
-                "error": f"Model {model_id} not found"
-            }
-            
-        model = models_storage[model_id]
-        
-        if not hasattr(model, 'equations_') or len(model.equations_) == 0:
-            return {
-                "success": False,
-                "error": f"Model {model_id} is not trained"
-            }
-            
-        logger.info(f"Evaluating model {model_id}")
-        
-        evaluation_results = {
-            "success": True,
-            "model_id": model_id,
-            "evaluation_timestamp": datetime.now().isoformat()
-        }
-        
-        # Training data evaluation
-        if model_id in data_storage:
-            training_data = data_storage[model_id]
-            X_train = training_data["X"]
-            y_train = training_data["y"]
-            
-            train_pred = model.predict(X_train)
-            
-            # Calculate training metrics
-            train_metrics = {
-                "r2_score": float(1 - np.sum((y_train - train_pred) ** 2) / np.sum((y_train - np.mean(y_train)) ** 2)),
-                "rmse": float(np.sqrt(np.mean((y_train - train_pred) ** 2))),
-                "mae": float(np.mean(np.abs(y_train - train_pred))),
-                "mape": float(np.mean(np.abs((y_train - train_pred) / y_train)) * 100) if np.all(y_train != 0) else None
-            }
-            
-            evaluation_results["training_metrics"] = train_metrics
-            
-        # Test data evaluation
-        if test_data:
-            X_test = np.array(test_data.X)
-            y_test = np.array(test_data.y)
-            
-            test_pred = model.predict(X_test)
-            
-            test_metrics = {
-                "r2_score": float(1 - np.sum((y_test - test_pred) ** 2) / np.sum((y_test - np.mean(y_test)) ** 2)),
-                "rmse": float(np.sqrt(np.mean((y_test - test_pred) ** 2))),
-                "mae": float(np.mean(np.abs(y_test - test_pred))),
-                "mape": float(np.mean(np.abs((y_test - test_pred) / y_test)) * 100) if np.all(y_test != 0) else None
-            }
-            
-            evaluation_results["test_metrics"] = test_metrics
-            
-        # Equation analysis
-        equations_df = model.equations_
-        
-        equation_analysis = {
-            "total_equations": len(equations_df),
-            "complexity_range": {
-                "min": int(equations_df.complexity.min()),
-                "max": int(equations_df.complexity.max()),
-                "mean": float(equations_df.complexity.mean())
-            },
-            "loss_range": {
-                "min": float(equations_df.loss.min()),
-                "max": float(equations_df.loss.max()),
-                "mean": float(equations_df.loss.mean())
-            },
-            "pareto_frontier_size": len(equations_df)
-        }
-        
-        # Best equations by different criteria
-        best_equations = {
-            "lowest_loss": {
-                "equation": str(equations_df.loc[equations_df.loss.idxmin()].equation),
-                "loss": float(equations_df.loss.min()),
-                "complexity": int(equations_df.loc[equations_df.loss.idxmin()].complexity)
-            },
-            "lowest_complexity": {
-                "equation": str(equations_df.loc[equations_df.complexity.idxmin()].equation),
-                "loss": float(equations_df.loc[equations_df.complexity.idxmin()].loss),
-                "complexity": int(equations_df.complexity.min())
-            },
-            "highest_score": {
-                "equation": str(equations_df.loc[equations_df.score.idxmax()].equation),
-                "loss": float(equations_df.loc[equations_df.score.idxmax()].loss),
-                "complexity": int(equations_df.loc[equations_df.score.idxmax()].complexity)
-            }
-        }
-        
-        evaluation_results["equation_analysis"] = equation_analysis
-        evaluation_results["best_equations"] = best_equations
-        
-        return evaluation_results
-        
-    except Exception as e:
-        logger.error(f"Error evaluating model {model_id}: {str(e)}")
-        return {
-            "success": False,
-            "model_id": model_id,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-# Additional utility tools
 
 @mcp.tool()
 async def list_models() -> Dict[str, Any]:
@@ -1171,9 +1182,11 @@ async def server_info() -> str:
     return json.dumps({
         "name": "PySR Symbolic Regression MCP Server",
         "version": "1.0.0",
+        "transport": "HTTP",
         "description": "FastMCP server providing symbolic regression capabilities using PySR",
-        "tools_available": 11,
+        "tools_available": 12,
         "capabilities": [
+            "Complete end-to-end training pipeline",
             "Model creation and configuration",
             "Training with custom operators",
             "Prediction generation", 
@@ -1195,6 +1208,7 @@ async def server_status() -> str:
     """Provides current server status and statistics."""
     status_info = {
         "timestamp": datetime.now().isoformat(),
+        "transport": "HTTP",
         "active_models": len(models_storage),
         "training_states": len(training_state),
         "data_storage_entries": len(data_storage),
@@ -1210,11 +1224,9 @@ if __name__ == "__main__":
     import argparse
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='PySR MCP Server')
-    parser.add_argument('--host', default='localhost', help='Host to bind to (default: localhost)')
-    parser.add_argument('--port', type=int, default=8001, help='Port to bind to (default: 8001)')
-    parser.add_argument('--transport', default='sse', choices=['stdio', 'sse'], 
-                       help='Transport method (default: sse)')
+    parser = argparse.ArgumentParser(description='PySR MCP Server with HTTP Transport')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=8000, help='Port to bind to (default: 8000)')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     
     args = parser.parse_args()
@@ -1223,503 +1235,21 @@ if __name__ == "__main__":
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
     
-    logger.info("Starting PySR MCP Server...")
+    logger.info("="*60)
+    logger.info("PySR MCP Server with HTTP Transport")
+    logger.info("="*60)
     logger.info(f"Models directory: {MODELS_DIR}")
     logger.info(f"Data directory: {DATA_DIR}")
     logger.info(f"Results directory: {RESULTS_DIR}")
-    logger.info(f"Transport: {args.transport}")
+    logger.info(f"Transport: HTTP")
+    logger.info(f"Server URL: http://{args.host}:{args.port}")
+    logger.info(f"Health endpoint: http://{args.host}:{args.port}/health")
+    logger.info(f"Server info: http://{args.host}:{args.port}/server/info")
+    logger.info("="*60)
     
-    if args.transport == 'sse':
-        logger.info(f"Server will run on: http://{args.host}:{args.port}")
-        logger.info(f"Health endpoint: http://{args.host}:{args.port}/health")
-        logger.info(f"Server info: http://{args.host}:{args.port}/server/info")
-        
-        # Configure for HTTP/SSE transport
-        mcp.run(
-            transport="sse",
-            host=args.host,
-            port=args.port
-        )
-    else:
-        logger.info("Running with STDIO transport")
-        # Run with STDIO transport (for Claude Desktop integration)
-        mcp.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# #!/usr/bin/env python3
-# """
-# PySR MCP Server - HTTP API implementation for symbolic regression
-# Provides tools for PySR model training and management
-# """
-
-# import os
-# import json
-# import pickle
-# import asyncio
-# import logging
-# import traceback
-# from datetime import datetime
-# from pathlib import Path
-# from typing import Dict, List, Optional, Any
-# import uuid
-
-# import numpy as np
-# import pandas as pd
-# from pydantic import BaseModel, Field
-# import pysr
-# from pysr import PySRRegressor
-# import sympy
-# from fastapi import FastAPI
-# from fastapi.middleware.cors import CORSMiddleware
-
-# # Configure logging
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
-
-# # Global storage for models and training state
-# models_storage: Dict[str, PySRRegressor] = {}
-# training_state: Dict[str, Dict] = {}
-# data_storage: Dict[str, Dict] = {}
-
-# # Ensure directories exist
-# MODELS_DIR = Path("models")
-# DATA_DIR = Path("data")
-# RESULTS_DIR = Path("results")
-
-# for dir_path in [MODELS_DIR, DATA_DIR, RESULTS_DIR]:
-#     dir_path.mkdir(exist_ok=True)
-
-# # Pydantic models
-# class ModelConfig(BaseModel):
-#     """Configuration for PySR model creation"""
-#     binary_operators: List[str] = Field(default=["+", "-", "*", "/"])
-#     unary_operators: List[str] = Field(default=["cos", "sin", "exp", "log", "sqrt"])
-#     niterations: int = Field(default=40)
-#     populations: int = Field(default=8)
-#     population_size: int = Field(default=33)
-#     maxsize: int = Field(default=20)
-#     maxdepth: int = Field(default=10)
-#     parsimony: float = Field(default=0.0032)
-#     complexity_of_operators: Dict[str, int] = Field(default_factory=dict)
-#     constraints: Dict[str, Any] = Field(default_factory=dict)
-#     nested_constraints: Dict[str, Dict] = Field(default_factory=dict)
-#     loss: str = Field(default="L2DistLoss()")
-#     model_selection: str = Field(default="best")
-#     random_state: Optional[int] = Field(default=None)
-    
-# class TrainingData(BaseModel):
-#     """Structure for training data"""
-#     X: List[List[float]]
-#     y: List[float]
-#     feature_names: Optional[List[str]] = None
-#     variable_names: Optional[List[str]] = None
-
-# # Core implementation functions
-# async def create_model_impl(model_id: str, config: ModelConfig) -> Dict[str, Any]:
-#     """Create a new PySR model"""
-#     try:
-#         logger.info(f"Creating model {model_id}")
-        
-#         pysr_params = {
-#             "binary_operators": config.binary_operators,
-#             "unary_operators": config.unary_operators,
-#             "niterations": config.niterations,
-#             "populations": config.populations,
-#             "population_size": config.population_size,
-#             "maxsize": config.maxsize,
-#             "maxdepth": config.maxdepth,
-#             "parsimony": config.parsimony,
-#             "loss": config.loss,
-#             "model_selection": config.model_selection,
-#             "random_state": config.random_state,
-#             "progress": True,
-#             "verbosity": 1,
-#         }
-        
-#         if config.complexity_of_operators:
-#             pysr_params["complexity_of_operators"] = config.complexity_of_operators
-#         if config.constraints:
-#             pysr_params["constraints"] = config.constraints
-#         if config.nested_constraints:
-#             pysr_params["nested_constraints"] = config.nested_constraints
-            
-#         model = PySRRegressor(**pysr_params)
-        
-#         models_storage[model_id] = model
-#         training_state[model_id] = {
-#             "status": "created",
-#             "created_at": datetime.now().isoformat(),
-#             "config": config.dict(),
-#             "iterations_completed": 0,
-#             "best_loss": None,
-#             "equations_found": 0
-#         }
-        
-#         logger.info(f"Model {model_id} created successfully")
-        
-#         return {
-#             "success": True,
-#             "model_id": model_id,
-#             "status": "created",
-#             "config": config.dict(),
-#             "message": "Model created successfully"
-#         }
-        
-#     except Exception as e:
-#         logger.error(f"Error creating model {model_id}: {str(e)}")
-#         return {
-#             "success": False,
-#             "model_id": model_id,
-#             "error": str(e),
-#             "traceback": traceback.format_exc()
-#         }
-
-# async def fit_model_impl(model_id: str, data: TrainingData) -> Dict[str, Any]:
-#     """Train the PySR model"""
-#     try:
-#         if model_id not in models_storage:
-#             return {
-#                 "success": False,
-#                 "error": f"Model {model_id} not found. Create model first."
-#             }
-            
-#         model = models_storage[model_id]
-        
-#         X = np.array(data.X)
-#         y = np.array(data.y)
-        
-#         logger.info(f"Training model {model_id} with data shape: X{X.shape}, y{y.shape}")
-        
-#         if len(X) != len(y):
-#             return {
-#                 "success": False,
-#                 "error": "Feature matrix and target vector must have same number of samples"
-#             }
-            
-#         data_storage[model_id] = {
-#             "X": X,
-#             "y": y,
-#             "feature_names": data.feature_names,
-#             "variable_names": data.variable_names
-#         }
-        
-#         training_state[model_id]["status"] = "training"
-#         training_state[model_id]["training_started"] = datetime.now().isoformat()
-        
-#         if data.variable_names:
-#             model.feature_names_in_ = data.variable_names
-            
-#         model.fit(X, y)
-        
-#         training_state[model_id]["status"] = "completed"
-#         training_state[model_id]["training_completed"] = datetime.now().isoformat()
-#         training_state[model_id]["equations_found"] = len(model.equations_) if hasattr(model, 'equations_') else 0
-        
-#         if hasattr(model, 'equations_') and len(model.equations_) > 0:
-#             best_eq = model.equations_.iloc[-1]
-#             training_state[model_id]["best_loss"] = float(best_eq.loss)
-#             training_state[model_id]["best_equation"] = str(best_eq.equation)
-#             training_state[model_id]["best_complexity"] = int(best_eq.complexity)
-        
-#         logger.info(f"Model {model_id} training completed successfully")
-        
-#         return {
-#             "success": True,
-#             "model_id": model_id,
-#             "status": "completed",
-#             "equations_found": training_state[model_id]["equations_found"],
-#             "best_loss": training_state[model_id].get("best_loss"),
-#             "best_equation": training_state[model_id].get("best_equation"),
-#             "training_time": training_state[model_id].get("training_completed"),
-#             "message": "Model training completed successfully"
-#         }
-        
-#     except Exception as e:
-#         logger.error(f"Error training model {model_id}: {str(e)}")
-#         if model_id in training_state:
-#             training_state[model_id]["status"] = "failed"
-#             training_state[model_id]["error"] = str(e)
-#         return {
-#             "success": False,
-#             "model_id": model_id,
-#             "error": str(e),
-#             "traceback": traceback.format_exc()
-#         }
-
-# async def get_equations_impl(model_id: str, include_details: bool = True) -> Dict[str, Any]:
-#     """Retrieve discovered equations"""
-#     try:
-#         if model_id not in models_storage:
-#             return {
-#                 "success": False,
-#                 "error": f"Model {model_id} not found"
-#             }
-            
-#         model = models_storage[model_id]
-        
-#         if not hasattr(model, 'equations_') or len(model.equations_) == 0:
-#             return {
-#                 "success": False,
-#                 "error": f"Model {model_id} has no equations. Train the model first."
-#             }
-            
-#         logger.info(f"Retrieving equations for model {model_id}")
-        
-#         equations_df = model.equations_
-#         equations_list = []
-        
-#         for idx, row in equations_df.iterrows():
-#             equation_info = {
-#                 "index": int(idx),
-#                 "equation": str(row.equation),
-#                 "complexity": int(row.complexity),
-#                 "loss": float(row.loss),
-#                 "score": float(row.score)
-#             }
-            
-#             if include_details:
-#                 for col in equations_df.columns:
-#                     if col not in ['equation', 'complexity', 'loss', 'score']:
-#                         try:
-#                             equation_info[col] = float(row[col]) if np.isscalar(row[col]) else str(row[col])
-#                         except:
-#                             equation_info[col] = str(row[col])
-                        
-#             equations_list.append(equation_info)
-        
-#         best_equation = equations_df.iloc[-1]
-        
-#         return {
-#             "success": True,
-#             "model_id": model_id,
-#             "equations": equations_list,
-#             "num_equations": len(equations_list),
-#             "best_equation": {
-#                 "equation": str(best_equation.equation),
-#                 "complexity": int(best_equation.complexity),
-#                 "loss": float(best_equation.loss),
-#                 "score": float(best_equation.score)
-#             }
-#         }
-        
-#     except Exception as e:
-#         logger.error(f"Error retrieving equations for model {model_id}: {str(e)}")
-#         return {
-#             "success": False,
-#             "model_id": model_id,
-#             "error": str(e),
-#             "traceback": traceback.format_exc()
-#         }
-
-# async def evaluate_model_impl(model_id: str) -> Dict[str, Any]:
-#     """Evaluate model performance"""
-#     try:
-#         if model_id not in models_storage:
-#             return {
-#                 "success": False,
-#                 "error": f"Model {model_id} not found"
-#             }
-            
-#         model = models_storage[model_id]
-        
-#         if not hasattr(model, 'equations_') or len(model.equations_) == 0:
-#             return {
-#                 "success": False,
-#                 "error": f"Model {model_id} is not trained"
-#             }
-            
-#         logger.info(f"Evaluating model {model_id}")
-        
-#         evaluation_results = {
-#             "success": True,
-#             "model_id": model_id,
-#             "evaluation_timestamp": datetime.now().isoformat()
-#         }
-        
-#         if model_id in data_storage:
-#             training_data = data_storage[model_id]
-#             X_train = training_data["X"]
-#             y_train = training_data["y"]
-            
-#             train_pred = model.predict(X_train)
-            
-#             train_metrics = {
-#                 "r2_score": float(1 - np.sum((y_train - train_pred) ** 2) / np.sum((y_train - np.mean(y_train)) ** 2)),
-#                 "rmse": float(np.sqrt(np.mean((y_train - train_pred) ** 2))),
-#                 "mae": float(np.mean(np.abs(y_train - train_pred))),
-#                 "mape": float(np.mean(np.abs((y_train - train_pred) / y_train)) * 100) if np.all(y_train != 0) else None
-#             }
-            
-#             evaluation_results["training_metrics"] = train_metrics
-            
-#         return evaluation_results
-        
-#     except Exception as e:
-#         logger.error(f"Error evaluating model {model_id}: {str(e)}")
-#         return {
-#             "success": False,
-#             "model_id": model_id,
-#             "error": str(e),
-#             "traceback": traceback.format_exc()
-#         }
-
-# async def health_check_impl() -> Dict[str, Any]:
-#     """Check server health"""
-#     try:
-#         return {
-#             "success": True,
-#             "status": "healthy",
-#             "timestamp": datetime.now().isoformat(),
-#             "active_models": len(models_storage),
-#             "models_with_equations": sum(1 for model in models_storage.values() 
-#                                        if hasattr(model, 'equations_') and len(model.equations_) > 0),
-#         }
-        
-#     except Exception as e:
-#         logger.error(f"Health check failed: {str(e)}")
-#         return {
-#             "success": False,
-#             "status": "unhealthy",
-#             "error": str(e),
-#             "timestamp": datetime.now().isoformat()
-#         }
-
-# # Create FastAPI app
-# app = FastAPI(title="PySR MCP Server HTTP API")
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # HTTP endpoints with /tools/ prefix
-# @app.post("/tools/create_model")
-# async def http_create_model(request: dict):
-#     """HTTP endpoint for create_model"""
-#     model_id = request.get("model_id")
-#     config_dict = request.get("config", {})
-#     config = ModelConfig(**config_dict)
-#     return await create_model_impl(model_id=model_id, config=config)
-
-# @app.post("/tools/fit_model")
-# async def http_fit_model(request: dict):
-#     """HTTP endpoint for fit_model"""
-#     model_id = request.get("model_id")
-#     data_dict = request.get("data", {})
-#     data = TrainingData(**data_dict)
-#     return await fit_model_impl(model_id=model_id, data=data)
-
-# @app.post("/tools/get_equations")
-# async def http_get_equations(request: dict):
-#     """HTTP endpoint for get_equations"""
-#     model_id = request.get("model_id")
-#     include_details = request.get("include_details", True)
-#     return await get_equations_impl(model_id=model_id, include_details=include_details)
-
-# @app.post("/tools/evaluate_model")
-# async def http_evaluate_model(request: dict):
-#     """HTTP endpoint for evaluate_model"""
-#     model_id = request.get("model_id")
-#     return await evaluate_model_impl(model_id=model_id)
-
-# @app.get("/health_check")
-# async def http_health_check():
-#     """HTTP endpoint for health_check"""
-#     return await health_check_impl()
-
-# @app.get("/")
-# async def root():
-#     """Root endpoint"""
-#     return {
-#         "name": "PySR MCP Server",
-#         "version": "1.0.0",
-#         "status": "running",
-#         "endpoints": {
-#             "create_model": "/tools/create_model",
-#             "fit_model": "/tools/fit_model",
-#             "get_equations": "/tools/get_equations",
-#             "evaluate_model": "/tools/evaluate_model",
-#             "health_check": "/health_check"
-#         }
-#     }
-
-# if __name__ == "__main__":
-#     import argparse
-#     import uvicorn
-    
-#     parser = argparse.ArgumentParser(description='PySR MCP Server')
-#     parser.add_argument('--host', default='localhost', help='Host to bind to')
-#     parser.add_argument('--port', type=int, default=8001, help='Port to bind to')
-#     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
-    
-#     args = parser.parse_args()
-    
-#     if args.debug:
-#         logging.getLogger().setLevel(logging.DEBUG)
-#         logger.setLevel(logging.DEBUG)
-    
-#     logger.info("Starting PySR MCP Server with HTTP API...")
-#     logger.info(f"Models directory: {MODELS_DIR}")
-#     logger.info(f"Data directory: {DATA_DIR}")
-#     logger.info(f"Results directory: {RESULTS_DIR}")
-#     logger.info(f"HTTP API running on: http://{args.host}:{args.port}")
-#     logger.info(f"Health check: http://{args.host}:{args.port}/health_check")
-    
-#     uvicorn.run(
-#         app,
-#         host=args.host,
-#         port=args.port,
-#         log_level="info" if not args.debug else "debug"
-
-#     )
+    # Run with HTTP transport
+    mcp.run(
+        transport="http",
+        host=args.host,
+        port=args.port
+    )

@@ -1,0 +1,54 @@
+{
+  "name": "@neural-symphony/pysr-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for PySR (Python Symbolic Regression) - discover symbolic mathematical expressions from data",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "pysr-mcp-server": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build",
+    "test": "node test_mcp_client.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "symbolic-regression",
+    "pysr",
+    "machine-learning",
+    "ai",
+    "equation-discovery",
+    "claude-code",
+    "anthropic"
+  ],
+  "author": "neural-symphony",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neural-symphony/pysr-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/neural-symphony/pysr-mcp-server/issues"
+  },
+  "homepage": "https://github.com/neural-symphony/pysr-mcp-server#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {},
+  "optionalDependencies": {}
+}

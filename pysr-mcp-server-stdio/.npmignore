@@ -1,0 +1,53 @@
+# Source files
+src/
+tsconfig.json
+
+# Tests
+test_mcp_client.js
+*.test.js
+*.spec.js
+
+# Data files
+data_complex.csv
+data_for_mcp.json
+*.pkl
+
+# Python files
+*.py
+__pycache__/
+*.pyc
+
+# Documentation (except README.md)
+USAGE_GUIDE.md
+TEST_RESULTS.md
+MCP_TEST_SUMMARY.md
+TROUBLESHOOTING.md
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (keep package-lock for reproducibility, but npm will ignore it anyway)
+# package-lock.json
+
+# Environment
+.env
+.env.local
+
+# Node modules
+node_modules/
+
+# Build artifacts (keep dist/)
+# dist/

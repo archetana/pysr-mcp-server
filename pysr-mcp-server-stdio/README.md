@@ -49,6 +49,27 @@ claude mcp add pysr npx @neural-symphony/pysr-mcp-server
 
 **Restart Claude Code** to load the new tools.
 
+Option 2: Manual Configuration
+If you prefer manual setup, edit your Claude Desktop config file:
+Config file location:
+
+Windows: %APPDATA%\Claude\claude_desktop_config.json
+Mac: ~/Library/Application Support/Claude/claude_desktop_config.json
+Linux: ~/.config/Claude/claude_desktop_config.json
+
+Add this configuration:
+json{
+  "mcpServers": {
+    "pysr": {
+      "command": "npx",
+      "args": [
+        "@neural-symphony/pysr-mcp-server"
+      ]
+    }
+  }
+}
+Then restart Claude Desktop.
+
 ### Verification
 
 ```bash
